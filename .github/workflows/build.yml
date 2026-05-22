@@ -68,14 +68,12 @@ jobs:
       - name: Setup build environment
         run: |
           mkdir -p out/target/product/a15/obj/KERNEL_OBJ
-          sudo apt-get install -y python2 2>/dev/null || true
+          # Fix Python 2 syntax in gen_build_config.py
+          sed -i \
+            's/print \(.*\)$/print(\1)/g' \
+            kernel-5.10/scripts/gen_build_config.py
+          # Run with python3
           cd kernel-5.10
-          python2 scripts/gen_build_config.py \
-            --kernel-defconfig a15_00_defconfig \
-            --kernel-defconfig-overlays "entry_level.config" \
-            -m user \
-            -o ../out/target/product/a15/obj/KERNEL_OBJ/build.config || \
-          sed -i 's/print /print(/g; s/print$/print()/g' scripts/gen_build_config.py && \
           python3 scripts/gen_build_config.py \
             --kernel-defconfig a15_00_defconfig \
             --kernel-defconfig-overlays "entry_level.config" \
