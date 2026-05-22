@@ -1,0 +1,123 @@
+name: Build KernelSU-Next (Fixed Repack)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: kernelsu
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git bc bison flex libssl-dev make libelf-dev \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            python3 python2 wget unzip lz4 tar zip python-is-python3
+          which python2 || sudo ln -sf /usr/bin/python2.7 /usr/bin/python2 || true
+
+      - name: Decompress boot.img
+        run: |
+          lz4 -d boot.img.lz4 boot.img
+          echo "boot.img size: $(stat -c%s boot.img) bytes"
+
+      - name: Patch defconfig for KernelSU-Next
+        run: |
+          ./kernel-5.10/scripts/config \
+            --file kernel-5.10/arch/arm64/configs/a15_00_defconfig \
+            --set-val UH n \
+            --set-val RKP n \
+            --set-val KDP n \
+            --set-val SECURITY_DEFEX n \
+            --set-val INTEGRITY n \
+            --set-val FIVE n \
+            --set-val TRIM_UNUSED_KSYMS n \
+            --set-val PROCA n \
+            --set-val PROCA_GKI_10 n \
+            --set-val PROCA_S_OS n \
+            --set-val PROCA_CERTIFICATES_XATTR n \
+            --set-val PROCA_CERT_ENG n \
+            --set-val PROCA_CERT_USER n \
+            --set-val GAF_V6 n \
+            --set-val FIVE_CERT_USER n \
+            --set-val FIVE_DEFAULT_HASH n \
+            --set-val UH_RKP n \
+            --set-val UH_LKMAUTH n \
+            --set-val UH_LKM_BLOCK n \
+            --set-val RKP_CFP_JOPP n \
+            --set-val RKP_CFP n \
+            --set-val KDP_CRED n \
+            --set-val KDP_NS n \
+            --set-val KDP_TEST n \
+            --set-val RKP_CRED n \
+            --set-val TCP_CONG_BBR y \
+            --set-val NET_SCH_FQ y \
+            --set-val DEFAULT_BBR y \
+            --set-val KSU y \
+            --set-val KSU_NEXT y \
+            --set-val ASSISTANT_KSU y
+
+      - name: Setup build environment
+        run: |
+          mkdir -p out/target/product/a15/obj/KERNEL_OBJ
+          sed -i 's/print \(.*\)$/print(\1)/g' kernel-5.10/scripts/gen_build_config.py
+          cd kernel-5.10
+          python3 scripts/gen_build_config.py \
+            --kernel-defconfig a15_00_defconfig \
+            --kernel-defconfig-overlays "entry_level.config" \
+            -m user \
+            -o ../out/target/product/a15/obj/KERNEL_OBJ/build.config
+
+      - name: Build kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CROSS_COMPILE_COMPAT="arm-linux-gnueabi-"
+          export OUT_DIR="out/target/product/a15/obj/KERNEL_OBJ"
+          export DIST_DIR="out/target/product/a15/obj/KERNEL_OBJ"
+          export BUILD_CONFIG="out/target/product/a15/obj/KERNEL_OBJ/build.config"
+          ./build.sh -j$(nproc)
+
+      - name: Move compiled Kernel to Repack folder
+        run: |
+          # Ép buộc sao chép nhân mới build xong vào thư mục gốc để tool repack có thể tìm thấy ruột mới
+          mkdir -p kernel-5.10/arch/arm64/boot/
+          cp out/target/product/a15/obj/KERNEL_OBJ/arch/arm64/boot/Image kernel-5.10/arch/arm64/boot/Image || true
+          cp out/target/product/a15/obj/KERNEL_OBJ/arch/arm64/boot/Image.gz kernel-5.10/arch/arm64/boot/Image.gz || true
+          echo "Đồng bộ Kernel mới hoàn tất."
+
+      - name: Repack boot image
+        run: |
+          chmod +x scripts/repack
+          ./scripts/repack
+          echo "Repacked boot.img size: $(stat -c%s boot.img) bytes"
+
+      - name: Upload boot.img as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-KSU-Next-CYG3
+          path: boot.img
+          retention-days: 7
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: KSU-Next-CYG3-Fixed
+          name: "KernelSU-Next A155F CYG3 - Repack Fixed"
+          body: |
+            Bản build KernelSU-Next đã được sửa lỗi nạp nhân cho SM-A155F.
+            Firmware gốc tương thích: A155FXXS7CYG3
+          files: boot.img
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
