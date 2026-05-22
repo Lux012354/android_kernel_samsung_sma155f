@@ -246,18 +246,14 @@ jobs:
             echo "ssg-iosched.c patched OK"
           fi
 
-          # Fix zram_drv.c — dùng Python script để thay thế chính xác, không phá cấu trúc code
-          cat > /tmp/patch_zram.py << 'PYEOF'
-import re
-with open('drivers/block/zram/zram_drv.c', 'r') as f:
-    content = f.read()
-content = content.replace('page->mem_cgroup', 'NULL /* mem_cgroup: samsung-removed */')
-content = re.sub(r'^(\s*\.android_oem_data1\s*=.*)', r'// \1  // patched: samsung-api-removed', content, flags=re.MULTILINE)
-with open('drivers/block/zram/zram_drv.c', 'w') as f:
-    f.write(content)
-print("zram_drv.c patched OK")
-PYEOF
-          python3 /tmp/patch_zram.py
+          # Fix zram_drv.c — YAML-safe bằng 2 lệnh sed
+          sed -i "s/page->mem_cgroup/NULL \/* samsung-removed *\//g" \
+            drivers/block/zram/zram_drv.c
+          sed -i "/\.android_oem_data1[[:space:]]*=/{s/^/\/\//}" \
+            drivers/block/zram/zram_drv.c
+          grep -n "page->mem_cgroup" drivers/block/zram/zram_drv.c \
+            && echo "ERROR: zram still has mem_cgroup" && exit 1 \
+            || echo "zram_drv.c patched OK"
 
           # Fix GED driver (missing disp_arr.h)
           sed -i 's|#include "disp_arr.h"|// #include "disp_arr.h" // patched: missing header|' \
@@ -374,7 +370,7 @@ PYEOF
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
             - 🔧 Thêm `-Wno-error=unused-function`, `misleading-indentation`, `unused-label` vào KCFLAGS
             - 🔧 Disable driver `MTK_GED` và vá trực tiếp `ged_kpi.c` (thiếu header)
-            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` bằng Python, đảm bảo cấu trúc code an toàn
+            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` bằng `sed` (an toàn YAML)
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
