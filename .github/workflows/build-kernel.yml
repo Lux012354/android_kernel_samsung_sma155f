@@ -250,7 +250,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function" \
             -j$(nproc)
 
           ccache -s
@@ -352,6 +352,7 @@ jobs:
             - 🔧 Sửa regex kiểm tra định dạng `boot.img`
             - 🔧 Thêm guard kiểm tra tồn tại của `gen_build_config.py`
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
+            - 🔧 Thêm `-Wno-error=unused-function` vào KCFLAGS
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
