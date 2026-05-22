@@ -230,9 +230,20 @@ jobs:
             a15_00_defconfig
 
           echo "=== Vá lỗi tương thích source code ==="
-          # Sửa trực tiếp trong source tree (đang ở kernel-5.10)
+          # Fix swapfile.c
           sed -i '/android_oem_data1/s/^/\/\//' mm/swapfile.c
           grep -n "android_oem_data1" mm/swapfile.c || echo "swapfile.c patched OK"
+
+          # Fix ssg-iosched.c line 744
+          sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ patched: css_to_blkcg API unavailable/' \
+            block/ssg-iosched.c
+          # Kiểm tra còn sót symbol không
+          if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c; then
+            echo "ERROR: Unpatched css_to_blkcg/blkcg_css remaining in ssg-iosched.c"
+            exit 1
+          else
+            echo "ssg-iosched.c patched OK"
+          fi
 
           echo "=== Bắt đầu build kernel ==="
           make O=../out/target/product/a15/obj/KERNEL_OBJ \
@@ -337,6 +348,7 @@ jobs:
 
             ### Thay đổi trong v5.3.3:
             - 🔧 Sửa lỗi `sed` sai path khi vá `swapfile.c`
+            - 🔧 Vá trực tiếp `ssg-iosched.c` để vô hiệu hóa API không tương thích
             - 🔧 Sửa regex kiểm tra định dạng `boot.img`
             - 🔧 Thêm guard kiểm tra tồn tại của `gen_build_config.py`
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
