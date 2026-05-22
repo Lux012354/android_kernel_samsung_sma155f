@@ -37,7 +37,7 @@ jobs:
         run: |
           git clone --depth=1 \
             https://gitlab.com/simonpunk/susfs4ksu.git \
-            -b kernel-5.10
+            -b gki-android12-5.10
           echo "SUSFS cloned successfully"
 
       - name: Apply SUSFS kernel patches
