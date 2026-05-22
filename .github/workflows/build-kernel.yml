@@ -246,9 +246,14 @@ jobs:
             echo "ssg-iosched.c patched OK"
           fi
 
-          # Fix zram_drv.c — YAML-safe bằng 2 lệnh sed
+          # Fix zram_drv.c
+          # Thay page->mem_cgroup->swappiness bằng 0 (giữ cấu trúc if)
+          sed -i "s/page->mem_cgroup->swappiness/0 \/* samsung-removed *\//g" \
+            drivers/block/zram/zram_drv.c
+          # Thay page->mem_cgroup còn lại (không có ->swappiness) bằng NULL  
           sed -i "s/page->mem_cgroup/NULL \/* samsung-removed *\//g" \
             drivers/block/zram/zram_drv.c
+          # Comment dòng .android_oem_data1 = ...
           sed -i "/\.android_oem_data1[[:space:]]*=/{s/^/\/\//}" \
             drivers/block/zram/zram_drv.c
           grep -n "page->mem_cgroup" drivers/block/zram/zram_drv.c \
@@ -370,7 +375,7 @@ jobs:
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
             - 🔧 Thêm `-Wno-error=unused-function`, `misleading-indentation`, `unused-label` vào KCFLAGS
             - 🔧 Disable driver `MTK_GED` và vá trực tiếp `ged_kpi.c` (thiếu header)
-            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` bằng `sed` (an toàn YAML)
+            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` (sai context `mem_cgroup`)
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
