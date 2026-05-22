@@ -168,7 +168,8 @@ jobs:
           # --- Disable incompatible Samsung drivers ---
           $CFG --file "$DEF" \
             --disable BLK_DEV_SSG \
-            --disable MTK_GED
+            --disable MTK_GED \
+            --disable MTK_BLOCKTAG
 
           # --- String values ---
           $CFG --file "$DEF" \
@@ -247,13 +248,10 @@ jobs:
           fi
 
           # Fix zram_drv.c
-          # Thay page->mem_cgroup->swappiness bằng 0 (giữ cấu trúc if)
           sed -i "s/page->mem_cgroup->swappiness/0 \/* samsung-removed *\//g" \
             drivers/block/zram/zram_drv.c
-          # Thay page->mem_cgroup còn lại (không có ->swappiness) bằng NULL  
           sed -i "s/page->mem_cgroup/NULL \/* samsung-removed *\//g" \
             drivers/block/zram/zram_drv.c
-          # Comment dòng .android_oem_data1 = ...
           sed -i "/\.android_oem_data1[[:space:]]*=/{s/^/\/\//}" \
             drivers/block/zram/zram_drv.c
           grep -n "page->mem_cgroup" drivers/block/zram/zram_drv.c \
@@ -271,7 +269,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=incomplete-type" \
             -j$(nproc)
 
           ccache -s
@@ -368,15 +366,9 @@ jobs:
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
             ### Thay đổi trong v5.3.3:
-            - 🔧 Sửa lỗi `sed` sai path khi vá `swapfile.c`
-            - 🔧 Vá trực tiếp `ssg-iosched.c` để vô hiệu hóa API không tương thích
-            - 🔧 Sửa regex kiểm tra định dạng `boot.img`
-            - 🔧 Thêm guard kiểm tra tồn tại của `gen_build_config.py`
-            - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
-            - 🔧 Thêm `-Wno-error=unused-function`, `misleading-indentation`, `unused-label` vào KCFLAGS
-            - 🔧 Disable driver `MTK_GED` và vá trực tiếp `ged_kpi.c` (thiếu header)
-            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` (sai context `mem_cgroup`)
-            - ✅ Giữ toàn bộ cải tiến từ các bản trước
+            - 🔧 Tinh chỉnh KCFLAGS (gộp một dòng, thêm cờ mới)
+            - 🔧 Disable driver `MTK_BLOCKTAG` (không tương thích)
+            - ✅ Giữ toàn bộ các bản vá trước đó
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
