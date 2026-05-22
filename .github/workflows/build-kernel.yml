@@ -1,0 +1,357 @@
+name: Build KernelSU-Next (Final v5.3.1)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ap_file:
+        description: 'Tên file AP tar (để trống để tự động tìm)'
+        required: false
+        default: ''
+      firmware_tag:
+        description: 'Tag release chứa vendor_boot (VD: firmware-CYG3)'
+        required: false
+        default: 'firmware-CYG3'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.1.7
+        with:
+          ref: kernelsu
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git bc bison flex libssl-dev make libelf-dev \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            python3 python3-2to3 wget unzip lz4 tar zip \
+            python-is-python3 ccache
+
+      - name: Cache ccache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.1.2
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('kernel-5.10/arch/arm64/configs/a15_00_defconfig', 'kernel-5.10/Makefile', 'kernel-5.10/scripts/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ hashFiles('kernel-5.10/arch/arm64/configs/a15_00_defconfig') }}
+            ${{ runner.os }}-ccache-
+
+      - name: Setup toolchain
+        run: |
+          if [ -f toolchain.zip ]; then
+            unzip -q toolchain.zip
+            echo "Toolchain unzipped from repo"
+          else
+            echo "Using system apt toolchain"
+          fi
+
+      - name: Prepare boot image
+        run: |
+          if [ -f boot.img.lz4 ]; then
+            lz4 -d -f boot.img.lz4 boot.img
+            echo "Decompressed boot.img from lz4: $(stat -c%s boot.img) bytes"
+          elif [ -f boot.img ]; then
+            echo "boot.img already exists: $(stat -c%s boot.img) bytes"
+          else
+            echo "ERROR: No boot.img or boot.img.lz4 found!"
+            exit 1
+          fi
+
+      - name: Fetch vendor_boot from AP tar or GitHub Release
+        run: |
+          # Bước 1: Thử lấy từ file AP cục bộ
+          AP_TAR="${{ github.event.inputs.ap_file }}"
+          if [ -z "$AP_TAR" ]; then
+            AP_TAR=$(ls AP_*.tar.md5 AP_*.tar 2>/dev/null | head -1)
+          fi
+          if [ -n "$AP_TAR" ] && [ -f "$AP_TAR" ]; then
+            echo "Using AP tar: $AP_TAR"
+            tar -xf "$AP_TAR" vendor_boot.img 2>/dev/null || true
+          else
+            echo "No local AP tar file found"
+          fi
+
+          # Bước 2: Nếu chưa có, thử tải từ GitHub Release asset
+          if [ ! -f vendor_boot.img ] && [ ! -f vendor_boot.img.lz4 ]; then
+            FIRMWARE_TAG="${{ github.event.inputs.firmware_tag }}"
+            echo "Attempting to fetch vendor_boot from release tag: $FIRMWARE_TAG"
+            ASSET_URL=$(curl -s \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$FIRMWARE_TAG" \
+              | python3 -c "
+            import sys, json
+            data = json.load(sys.stdin)
+            assets = data.get('assets', [])
+            for a in assets:
+                if 'vendor_boot' in a['name']:
+                    print(a['browser_download_url'])
+                    break
+            ")
+            if [ -n "$ASSET_URL" ]; then
+              wget -q --header="Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                "$ASSET_URL" -O vendor_boot.img.lz4
+              echo "Downloaded vendor_boot.img.lz4 from release"
+            else
+              echo "WARNING: vendor_boot not found in release assets"
+            fi
+          fi
+
+          # Bước 3: Giải nén nếu là file .lz4
+          if [ -f vendor_boot.img.lz4 ]; then
+            lz4 -d -f vendor_boot.img.lz4 vendor_boot.img
+          fi
+          [ -f vendor_boot.img ] && \
+            echo "vendor_boot.img: $(stat -c%s vendor_boot.img) bytes" || \
+            echo "WARNING: vendor_boot.img not found"
+
+      - name: Patch defconfig for KernelSU-Next
+        run: |
+          DEF="kernel-5.10/arch/arm64/configs/a15_00_defconfig"
+          CFG="./kernel-5.10/scripts/config"
+
+          # --- Disable Samsung security features ---
+          $CFG --file "$DEF" \
+            --disable UH \
+            --disable RKP \
+            --disable KDP \
+            --disable SECURITY_DEFEX \
+            --disable INTEGRITY \
+            --disable FIVE \
+            --disable TRIM_UNUSED_KSYMS \
+            --disable PROCA \
+            --disable PROCA_GKI_10 \
+            --disable PROCA_S_OS \
+            --disable PROCA_CERTIFICATES_XATTR \
+            --disable PROCA_CERT_ENG \
+            --disable PROCA_CERT_USER \
+            --disable GAF_V6 \
+            --disable FIVE_CERT_USER \
+            --disable FIVE_DEFAULT_HASH \
+            --disable UH_RKP \
+            --disable UH_LKMAUTH \
+            --disable UH_LKM_BLOCK \
+            --disable RKP_CFP_JOPP \
+            --disable RKP_CFP \
+            --disable KDP_CRED \
+            --disable KDP_NS \
+            --disable KDP_TEST \
+            --disable RKP_CRED \
+            --disable TCP_CONG_BIC \
+            --disable TCP_CONG_WESTWOOD \
+            --disable TCP_CONG_HTCP \
+            --disable DEFAULT_BIC \
+            --disable DEFAULT_RENO \
+            --disable DEFAULT_CUBIC
+
+          # --- Enable core features ---
+          $CFG --file "$DEF" \
+            --enable TMPFS_XATTR \
+            --enable TMPFS_POSIX_ACL \
+            --enable IP_NF_TARGET_TTL \
+            --enable IP6_NF_TARGET_HL \
+            --enable IP6_NF_MATCH_HL \
+            --enable TCP_CONG_ADVANCED \
+            --enable TCP_CONG_BBR \
+            --enable NET_SCH_FQ \
+            --enable DEFAULT_BBR \
+            --enable OVERLAY_FS \
+            --enable KSU \
+            --enable MODULES \
+            --enable KPROBES \
+            --enable KPROBE_EVENTS \
+            --enable KALLSYMS_ALL \
+            --enable NETFILTER_XT_MATCH_OWNER \
+            --enable IP_NF_MANGLE \
+            --enable SECURITY
+
+          # --- Enable KSU-Next nếu đã tích hợp ---
+          if grep -rq "config KSU_NEXT" kernel-5.10/; then
+            $CFG --file "$DEF" --enable KSU_NEXT
+            $CFG --file "$DEF" --enable ASSISTANT_KSU
+            echo "KSU_NEXT và ASSISTANT_KSU đã được enable"
+          else
+            echo "WARNING: KSU_NEXT not found in Kconfig, skipping"
+          fi
+
+          # --- String values ---
+          $CFG --file "$DEF" \
+            --set-str DEFAULT_TCP_CONG "bbr"
+
+          echo "=== Verifying key configs ==="
+          grep -E "^(CONFIG_KSU|CONFIG_OVERLAY_FS|CONFIG_KPROBES|CONFIG_SECURITY|CONFIG_MODULES|CONFIG_KALLSYMS)" "$DEF" || true
+
+      - name: Setup build environment
+        run: |
+          mkdir -p out/target/product/a15/obj/KERNEL_OBJ
+          mkdir -p out/dist
+
+          PY_SCRIPT="kernel-5.10/scripts/gen_build_config.py"
+          if python3 -c "
+          import ast, sys
+          try:
+              ast.parse(open('$PY_SCRIPT').read())
+              sys.exit(0)
+          except SyntaxError:
+              sys.exit(1)
+          "; then
+            echo "gen_build_config.py syntax OK, no fix needed"
+          else
+            echo "Syntax error detected, running 2to3..."
+            2to3 -w "$PY_SCRIPT"
+          fi
+
+          cd kernel-5.10
+          OVERLAY_ARG=""
+          [ -f entry_level.config ] && OVERLAY_ARG="--kernel-defconfig-overlays entry_level.config"
+          python3 scripts/gen_build_config.py \
+            --kernel-defconfig a15_00_defconfig \
+            $OVERLAY_ARG \
+            -m user \
+            -o ../out/target/product/a15/obj/KERNEL_OBJ/build.config
+
+      - name: Build kernel
+        run: |
+          export USE_CCACHE=1
+          export CCACHE_DIR=$HOME/.ccache
+          export PATH="/usr/lib/ccache:$PATH"
+          ccache -M 4G
+          export ARCH=arm64
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CROSS_COMPILE_COMPAT="arm-linux-gnueabi-"
+          export OUT_DIR="../out/target/product/a15/obj/KERNEL_OBJ"
+          export DIST_DIR="../out/dist"
+          export BUILD_CONFIG="../out/target/product/a15/obj/KERNEL_OBJ/build.config"
+          export MAKEFLAGS="-j$(nproc)"
+          cd kernel-5.10
+          bash build.sh
+          ccache -s
+
+      - name: Locate kernel Image
+        run: |
+          echo "=== Searching for Image / Image.gz ==="
+          find out/ -name "Image*" 2>/dev/null | sort
+
+          IMGPATH="out/target/product/a15/obj/KERNEL_OBJ/kernel-5.10/arch/arm64/boot"
+          if [ -f "$IMGPATH/Image.gz" ]; then
+            echo "KERNEL_IMAGE_PATH=$IMGPATH" >> $GITHUB_ENV
+            echo "KERNEL_IMAGE_FILE=Image.gz" >> $GITHUB_ENV
+          elif [ -f "$IMGPATH/Image" ]; then
+            echo "KERNEL_IMAGE_PATH=$IMGPATH" >> $GITHUB_ENV
+            echo "KERNEL_IMAGE_FILE=Image" >> $GITHUB_ENV
+          else
+            FOUND=$(find out/ -name "Image.gz" 2>/dev/null | head -1)
+            [ -z "$FOUND" ] && FOUND=$(find out/ -name "Image" 2>/dev/null | head -1)
+            [ -z "$FOUND" ] && echo "ERROR: Image not found!" && exit 1
+            echo "KERNEL_IMAGE_PATH=$(dirname $FOUND)" >> $GITHUB_ENV
+            echo "KERNEL_IMAGE_FILE=$(basename $FOUND)" >> $GITHUB_ENV
+          fi
+
+          echo "=== Kernel image found ==="
+          _PATH=$(grep "^KERNEL_IMAGE_PATH=" "$GITHUB_ENV" | cut -d= -f2)
+          _FILE=$(grep "^KERNEL_IMAGE_FILE=" "$GITHUB_ENV" | cut -d= -f2)
+          ls -lh "$_PATH/$_FILE"
+
+      - name: Inject kernel into repack workspace
+        run: |
+          mkdir -p kernel-5.10/arch/arm64/boot/
+          SRC="$KERNEL_IMAGE_PATH/$KERNEL_IMAGE_FILE"
+
+          if [ "$KERNEL_IMAGE_FILE" = "Image.gz" ]; then
+            cp "$SRC" kernel-5.10/arch/arm64/boot/Image.gz
+            gunzip -k -f kernel-5.10/arch/arm64/boot/Image.gz
+            IMG_SIZE=$(stat -c%s kernel-5.10/arch/arm64/boot/Image 2>/dev/null || echo 0)
+            if [ "$IMG_SIZE" -lt 1048576 ]; then
+              echo "ERROR: Decompressed Image is suspiciously small (${IMG_SIZE} bytes) — possible corrupt!"
+              exit 1
+            fi
+          else
+            cp "$SRC" kernel-5.10/arch/arm64/boot/Image
+            gzip -9 -c "$SRC" > kernel-5.10/arch/arm64/boot/Image.gz
+            IMG_SIZE=$(stat -c%s kernel-5.10/arch/arm64/boot/Image)
+          fi
+
+          echo "Image:    $(stat -c%s kernel-5.10/arch/arm64/boot/Image 2>/dev/null || echo 'N/A') bytes"
+          echo "Image.gz: $(stat -c%s kernel-5.10/arch/arm64/boot/Image.gz 2>/dev/null || echo 'N/A') bytes"
+
+      - name: Repack boot image
+        run: |
+          if [ ! -f scripts/repack ]; then
+            echo "ERROR: scripts/repack not found!"
+            exit 1
+          fi
+          chmod +x scripts/repack
+          ./scripts/repack
+          echo "Repacked boot.img: $(stat -c%s boot.img) bytes"
+          file boot.img
+          file boot.img | grep -qiE "android boot(img| image)" || \
+            { echo "ERROR: boot.img is not a valid Android boot image!"; exit 1; }
+          echo "boot.img format OK"
+
+      - name: Create Odin flashable tar
+        run: |
+          if [ -f vendor_boot.img ]; then
+            tar -cvf KSU-Next-A155F.tar boot.img vendor_boot.img
+          else
+            tar -cvf KSU-Next-A155F.tar boot.img
+          fi
+          echo "KSU-Next-A155F.tar: $(stat -c%s KSU-Next-A155F.tar) bytes"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: boot-KSU-Next-CYG3-v5-${{ github.run_number }}
+          path: |
+            boot.img
+            vendor_boot.img
+            KSU-Next-A155F.tar
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Create Release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631  # v2.x
+        with:
+          tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
+          name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
+          body: |
+            ## KernelSU-Next cho SM-A155F — Final v5.3.1
+
+            **Firmware gốc tương thích:** A155FXXS7CYG3
+
+            ### Cải tiến trong Final v5.3.1:
+            - 🔧 Hỗ trợ lấy `vendor_boot.img` từ GitHub Release asset (Giải pháp 1.5)
+            - 🔧 Input mới: `firmware_tag` để chọn release chứa vendor_boot
+            - 🔧 Tự động fallback: thử AP cục bộ → GitHub Release → cảnh báo
+            - 🔧 Thêm `Authorization` header khi tải asset (an toàn cho repo private)
+            - ✅ Giữ toàn bộ cải tiến từ v5.2
+
+            ### Hướng dẫn sử dụng:
+            1. Tạo một release trong repo với tag `firmware-CYG3` (hoặc tùy chỉnh), đính kèm file `vendor_boot.img.lz4`.
+            2. Khi chạy workflow, nhập tag đó vào input `firmware_tag` (mặc định `firmware-CYG3`).
+            3. Workflow sẽ tự tải file về và sử dụng.
+
+            ### Lưu ý trước khi flash:
+            > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
+            > hoặc thiết bị đã được unlock bootloader đúng cách.
+
+            ### Hướng dẫn flash:
+            > **Cách 1 — Odin:**
+            1. Chọn `AP` và nạp file `KSU-Next-A155F.tar`
+
+            > **Cách 2 — Fastboot (thủ công):**
+            1. Flash `boot.img` vào partition `boot`
+            2. Flash `vendor_boot.img` vào partition `vendor_boot`
+          files: |
+            boot.img
+            vendor_boot.img
+            KSU-Next-A155F.tar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
