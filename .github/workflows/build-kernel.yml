@@ -231,11 +231,12 @@ jobs:
             a15_00_defconfig
 
           echo "=== Vá lỗi tương thích source code ==="
+          
           # Fix swapfile.c
           sed -i '/android_oem_data1/s/^/\/\//' mm/swapfile.c
           grep -n "android_oem_data1" mm/swapfile.c || echo "swapfile.c patched OK"
 
-          # Fix ssg-iosched.c line 744
+          # Fix ssg-iosched.c
           sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ samsung-api-removed/' \
             block/ssg-iosched.c
           if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c | grep -v "//.*samsung-api-removed"; then
@@ -244,6 +245,18 @@ jobs:
           else
             echo "ssg-iosched.c patched OK"
           fi
+
+          # Fix zram_drv.c
+          sed -i '/mem_cgroup/s/^/\/\//' drivers/block/zram/zram_drv.c
+          sed -i '/android_oem_data1/s/^/\/\//' drivers/block/zram/zram_drv.c
+          grep -n "mem_cgroup\|android_oem_data1" drivers/block/zram/zram_drv.c || \
+            echo "zram_drv.c patched OK"
+
+          # Fix GED driver (missing disp_arr.h)
+          sed -i 's|#include "disp_arr.h"|// #include "disp_arr.h" // patched: missing header|' \
+            drivers/gpu/mediatek/ged/src/ged_kpi.c
+          grep -n "disp_arr.h" drivers/gpu/mediatek/ged/src/ged_kpi.c || \
+            echo "ged_kpi.c patched OK"
 
           echo "=== Bắt đầu build kernel ==="
           make O=../out/target/product/a15/obj/KERNEL_OBJ \
@@ -352,9 +365,9 @@ jobs:
             - 🔧 Sửa regex kiểm tra định dạng `boot.img`
             - 🔧 Thêm guard kiểm tra tồn tại của `gen_build_config.py`
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
-            - 🔧 Thêm `-Wno-error=unused-function` vào KCFLAGS
-            - 🔧 Disable driver `MTK_GED` (thiếu header)
-            - 🔧 Thêm flag `-Wno-error=misleading-indentation` và `-Wno-error=unused-label`
+            - 🔧 Thêm `-Wno-error=unused-function`, `misleading-indentation`, `unused-label` vào KCFLAGS
+            - 🔧 Disable driver `MTK_GED` và vá trực tiếp `ged_kpi.c` (thiếu header)
+            - 🔧 Vá trực tiếp `zram_drv.c` (vendor hooks không tương thích)
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
