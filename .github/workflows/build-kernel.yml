@@ -225,6 +225,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args" \
             -j$(nproc)
 
           ccache -s
@@ -324,6 +325,7 @@ jobs:
             - 🔧 Thêm gói `2to3` để sửa syntax Python 2 cho `gen_build_config.py`
             - 🔧 Xóa kiểm tra `KSU_NEXT` (repo dùng chung `CONFIG_KSU`)
             - 🔧 Sử dụng `make` trực tiếp thay vì `build.sh` (không tồn tại)
+            - 🔧 Thêm `KCFLAGS="-Wno-error=format="` để tương thích GCC 11
             - ✅ Tự động tải `vendor_boot.img` từ GitHub Release asset
             - ✅ Fallback lấy từ file AP cục bộ nếu có
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
