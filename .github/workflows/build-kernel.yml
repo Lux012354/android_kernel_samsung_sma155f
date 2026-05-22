@@ -246,11 +246,18 @@ jobs:
             echo "ssg-iosched.c patched OK"
           fi
 
-          # Fix zram_drv.c
-          sed -i '/mem_cgroup/s/^/\/\//' drivers/block/zram/zram_drv.c
-          sed -i '/android_oem_data1/s/^/\/\//' drivers/block/zram/zram_drv.c
-          grep -n "mem_cgroup\|android_oem_data1" drivers/block/zram/zram_drv.c || \
-            echo "zram_drv.c patched OK"
+          # Fix zram_drv.c — dùng Python script để thay thế chính xác, không phá cấu trúc code
+          cat > /tmp/patch_zram.py << 'PYEOF'
+import re
+with open('drivers/block/zram/zram_drv.c', 'r') as f:
+    content = f.read()
+content = content.replace('page->mem_cgroup', 'NULL /* mem_cgroup: samsung-removed */')
+content = re.sub(r'^(\s*\.android_oem_data1\s*=.*)', r'// \1  // patched: samsung-api-removed', content, flags=re.MULTILINE)
+with open('drivers/block/zram/zram_drv.c', 'w') as f:
+    f.write(content)
+print("zram_drv.c patched OK")
+PYEOF
+          python3 /tmp/patch_zram.py
 
           # Fix GED driver (missing disp_arr.h)
           sed -i 's|#include "disp_arr.h"|// #include "disp_arr.h" // patched: missing header|' \
@@ -367,7 +374,7 @@ jobs:
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
             - 🔧 Thêm `-Wno-error=unused-function`, `misleading-indentation`, `unused-label` vào KCFLAGS
             - 🔧 Disable driver `MTK_GED` và vá trực tiếp `ged_kpi.c` (thiếu header)
-            - 🔧 Vá trực tiếp `zram_drv.c` (vendor hooks không tương thích)
+            - 🔧 Sửa triệt để lỗi trong `zram_drv.c` bằng Python, đảm bảo cấu trúc code an toàn
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
