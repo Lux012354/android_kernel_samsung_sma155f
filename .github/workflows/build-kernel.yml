@@ -235,10 +235,10 @@ jobs:
           grep -n "android_oem_data1" mm/swapfile.c || echo "swapfile.c patched OK"
 
           # Fix ssg-iosched.c line 744
-          sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ patched: css_to_blkcg API unavailable/' \
+          sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ samsung-api-removed/' \
             block/ssg-iosched.c
-          # Kiểm tra còn sót symbol không
-          if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c; then
+          # Kiểm tra: chỉ báo lỗi nếu còn symbol trong code thực sự (không phải comment)
+          if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c | grep -v "//.*samsung-api-removed"; then
             echo "ERROR: Unpatched css_to_blkcg/blkcg_css remaining in ssg-iosched.c"
             exit 1
           else
