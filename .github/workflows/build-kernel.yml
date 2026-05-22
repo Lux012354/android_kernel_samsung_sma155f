@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.3.1)
+name: Build KernelSU-Next (Final v5.3.2)
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             git bc bison flex libssl-dev make libelf-dev \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            python3 wget unzip lz4 tar zip \
+            python3 2to3 wget unzip lz4 tar zip \
             python-is-python3 ccache
 
       - name: Cache ccache
@@ -144,7 +144,7 @@ jobs:
             --disable DEFAULT_RENO \
             --disable DEFAULT_CUBIC
 
-          # --- Enable core features ---
+          # --- Enable core features (KSU-Next dùng chung CONFIG_KSU) ---
           $CFG --file "$DEF" \
             --enable TMPFS_XATTR \
             --enable TMPFS_POSIX_ACL \
@@ -164,15 +164,6 @@ jobs:
             --enable NETFILTER_XT_MATCH_OWNER \
             --enable IP_NF_MANGLE \
             --enable SECURITY
-
-          # --- Enable KSU-Next nếu đã tích hợp ---
-          if grep -rq "config KSU_NEXT" kernel-5.10/; then
-            $CFG --file "$DEF" --enable KSU_NEXT
-            $CFG --file "$DEF" --enable ASSISTANT_KSU
-            echo "KSU_NEXT và ASSISTANT_KSU đã được enable"
-          else
-            echo "WARNING: KSU_NEXT not found in Kconfig, skipping"
-          fi
 
           # --- String values ---
           $CFG --file "$DEF" \
@@ -314,21 +305,16 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.3.1
+            ## KernelSU-Next cho SM-A155F — Final v5.3.2
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Cải tiến trong Final v5.3.1:
-            - 🔧 Hỗ trợ lấy `vendor_boot.img` từ GitHub Release asset (Giải pháp 1.5)
-            - 🔧 Input mới: `firmware_tag` để chọn release chứa vendor_boot
-            - 🔧 Tự động fallback: thử AP cục bộ → GitHub Release → cảnh báo
-            - 🔧 Thêm `Authorization` header khi tải asset (an toàn cho repo private)
-            - ✅ Giữ toàn bộ cải tiến từ v5.2
-
-            ### Hướng dẫn sử dụng:
-            1. Tạo một release trong repo với tag `firmware-CYG3` (hoặc tùy chỉnh), đính kèm file `vendor_boot.img.lz4`.
-            2. Khi chạy workflow, nhập tag đó vào input `firmware_tag` (mặc định `firmware-CYG3`).
-            3. Workflow sẽ tự tải file về và sử dụng.
+            ### Thay đổi trong v5.3.2:
+            - 🔧 Thêm gói `2to3` để sửa syntax Python 2 cho `gen_build_config.py`
+            - 🔧 Xóa kiểm tra `KSU_NEXT` (repo dùng chung `CONFIG_KSU`)
+            - ✅ Tự động tải `vendor_boot.img` từ GitHub Release asset
+            - ✅ Fallback lấy từ file AP cục bộ nếu có
+            - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
