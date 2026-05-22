@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.3.3)
+name: Build KernelSU-Next (Final v5.4)
 
 on:
   workflow_dispatch:
@@ -68,7 +68,6 @@ jobs:
 
       - name: Fetch vendor_boot from AP tar or GitHub Release
         run: |
-          # Bước 1: Thử lấy từ file AP cục bộ
           AP_TAR="${{ github.event.inputs.ap_file }}"
           if [ -z "$AP_TAR" ]; then
             AP_TAR=$(ls AP_*.tar.md5 AP_*.tar 2>/dev/null | head -1)
@@ -80,7 +79,6 @@ jobs:
             echo "No local AP tar file found"
           fi
 
-          # Bước 2: Nếu chưa có, thử tải từ GitHub Release asset
           if [ ! -f vendor_boot.img ] && [ ! -f vendor_boot.img.lz4 ]; then
             FIRMWARE_TAG="${{ github.event.inputs.firmware_tag }}"
             echo "Attempting to fetch vendor_boot from release tag: $FIRMWARE_TAG"
@@ -97,7 +95,6 @@ jobs:
             fi
           fi
 
-          # Bước 3: Giải nén nếu là file .lz4
           if [ -f vendor_boot.img.lz4 ]; then
             lz4 -d -f vendor_boot.img.lz4 vendor_boot.img
           fi
@@ -110,7 +107,6 @@ jobs:
           DEF="kernel-5.10/arch/arm64/configs/a15_00_defconfig"
           CFG="./kernel-5.10/scripts/config"
 
-          # --- Disable Samsung security features ---
           $CFG --file "$DEF" \
             --disable UH \
             --disable RKP \
@@ -144,7 +140,6 @@ jobs:
             --disable DEFAULT_RENO \
             --disable DEFAULT_CUBIC
 
-          # --- Enable core features (KSU-Next dùng chung CONFIG_KSU) ---
           $CFG --file "$DEF" \
             --enable TMPFS_XATTR \
             --enable TMPFS_POSIX_ACL \
@@ -165,13 +160,12 @@ jobs:
             --enable IP_NF_MANGLE \
             --enable SECURITY
 
-          # --- Disable incompatible Samsung drivers ---
           $CFG --file "$DEF" \
             --disable BLK_DEV_SSG \
             --disable MTK_GED \
-            --disable MTK_BLOCKTAG
+            --disable MTK_BLOCKTAG \
+            --disable TZDEV
 
-          # --- String values ---
           $CFG --file "$DEF" \
             --set-str DEFAULT_TCP_CONG "bbr"
 
@@ -233,11 +227,9 @@ jobs:
 
           echo "=== Vá lỗi tương thích source code ==="
           
-          # Fix swapfile.c
           sed -i '/android_oem_data1/s/^/\/\//' mm/swapfile.c
           grep -n "android_oem_data1" mm/swapfile.c || echo "swapfile.c patched OK"
 
-          # Fix ssg-iosched.c
           sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ samsung-api-removed/' \
             block/ssg-iosched.c
           if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c | grep -v "//.*samsung-api-removed"; then
@@ -247,7 +239,6 @@ jobs:
             echo "ssg-iosched.c patched OK"
           fi
 
-          # Fix zram_drv.c
           sed -i "s/page->mem_cgroup->swappiness/0 \/* samsung-removed *\//g" \
             drivers/block/zram/zram_drv.c
           sed -i "s/page->mem_cgroup/NULL \/* samsung-removed *\//g" \
@@ -258,7 +249,6 @@ jobs:
             && echo "ERROR: zram still has mem_cgroup" && exit 1 \
             || echo "zram_drv.c patched OK"
 
-          # Fix GED driver (missing disp_arr.h)
           sed -i 's|#include "disp_arr.h"|// #include "disp_arr.h" // patched: missing header|' \
             drivers/gpu/mediatek/ged/src/ged_kpi.c
           grep -n "disp_arr.h" drivers/gpu/mediatek/ged/src/ged_kpi.c || \
@@ -269,7 +259,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=stringop-overread -Wno-error=parentheses" \
             -j$(nproc)
 
           ccache -s
@@ -361,13 +351,14 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.3.3
+            ## KernelSU-Next cho SM-A155F — Final v5.4
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Thay đổi trong v5.3.3:
-            - 🔧 Loại bỏ flag `-Wno-error=incomplete-type` không hợp lệ
-            - ✅ Giữ toàn bộ các bản vá và cấu hình trước đó
+            ### Thay đổi trong v5.4:
+            - 🔧 Thêm `-Wno-error=stringop-overread` và `-Wno-error=parentheses` vào KCFLAGS
+            - 🔧 Disable thêm driver `TZDEV` (không tương thích)
+            - ✅ Giữ toàn bộ các bản vá và cấu hình từ v5.3.3
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
