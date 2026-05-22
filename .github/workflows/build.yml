@@ -24,7 +24,9 @@ jobs:
           sudo apt-get install -y \
             git bc bison flex libssl-dev make libelf-dev \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            python3 wget unzip lz4 tar zip python-is-python3
+            python3 python2 wget unzip lz4 tar zip python-is-python3
+          # Link python2 nếu chưa có
+          which python2 || sudo ln -sf /usr/bin/python2.7 /usr/bin/python2 || true
 
       - name: Decompress boot.img
         run: |
