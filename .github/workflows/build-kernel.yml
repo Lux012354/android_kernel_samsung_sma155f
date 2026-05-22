@@ -167,7 +167,8 @@ jobs:
 
           # --- Disable incompatible Samsung drivers ---
           $CFG --file "$DEF" \
-            --disable BLK_DEV_SSG
+            --disable BLK_DEV_SSG \
+            --disable MTK_GED
 
           # --- String values ---
           $CFG --file "$DEF" \
@@ -237,7 +238,6 @@ jobs:
           # Fix ssg-iosched.c line 744
           sed -i 's/rqi->blkg = blkg_lookup(css_to_blkcg(blkcg_css()), rq->q);/rqi->blkg = NULL; \/\/ samsung-api-removed/' \
             block/ssg-iosched.c
-          # Kiểm tra: chỉ báo lỗi nếu còn symbol trong code thực sự (không phải comment)
           if grep -n "css_to_blkcg\|blkcg_css" block/ssg-iosched.c | grep -v "//.*samsung-api-removed"; then
             echo "ERROR: Unpatched css_to_blkcg/blkcg_css remaining in ssg-iosched.c"
             exit 1
@@ -250,7 +250,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label" \
             -j$(nproc)
 
           ccache -s
@@ -353,6 +353,8 @@ jobs:
             - 🔧 Thêm guard kiểm tra tồn tại của `gen_build_config.py`
             - 🔧 Cache key dùng `scripts/config` thay vì `scripts/**`
             - 🔧 Thêm `-Wno-error=unused-function` vào KCFLAGS
+            - 🔧 Disable driver `MTK_GED` (thiếu header)
+            - 🔧 Thêm flag `-Wno-error=misleading-indentation` và `-Wno-error=unused-label`
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
 
             ### Lưu ý trước khi flash:
