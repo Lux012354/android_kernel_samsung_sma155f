@@ -207,15 +207,26 @@ jobs:
           export CCACHE_DIR=$HOME/.ccache
           export PATH="/usr/lib/ccache:$PATH"
           ccache -M 4G
+
           export ARCH=arm64
           export CROSS_COMPILE="aarch64-linux-gnu-"
           export CROSS_COMPILE_COMPAT="arm-linux-gnueabi-"
-          export OUT_DIR="../out/target/product/a15/obj/KERNEL_OBJ"
-          export DIST_DIR="../out/dist"
-          export BUILD_CONFIG="../out/target/product/a15/obj/KERNEL_OBJ/build.config"
-          export MAKEFLAGS="-j$(nproc)"
+
           cd kernel-5.10
-          bash build.sh
+
+          echo "=== Tạo config ==="
+          make O=../out/target/product/a15/obj/KERNEL_OBJ \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            a15_00_defconfig
+
+          echo "=== Bắt đầu build kernel ==="
+          make O=../out/target/product/a15/obj/KERNEL_OBJ \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            -j$(nproc)
+
           ccache -s
 
       - name: Locate kernel Image
@@ -312,6 +323,7 @@ jobs:
             ### Thay đổi trong v5.3.2:
             - 🔧 Thêm gói `2to3` để sửa syntax Python 2 cho `gen_build_config.py`
             - 🔧 Xóa kiểm tra `KSU_NEXT` (repo dùng chung `CONFIG_KSU`)
+            - 🔧 Sử dụng `make` trực tiếp thay vì `build.sh` (không tồn tại)
             - ✅ Tự động tải `vendor_boot.img` từ GitHub Release asset
             - ✅ Fallback lấy từ file AP cục bộ nếu có
             - ✅ Giữ toàn bộ cải tiến từ các bản trước
