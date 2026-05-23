@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.13)
+name: Build KernelSU-Next (Final v5.14)
 
 on:
   workflow_dispatch:
@@ -138,7 +138,10 @@ jobs:
             --disable TCP_CONG_HTCP \
             --disable DEFAULT_BIC \
             --disable DEFAULT_RENO \
-            --disable DEFAULT_CUBIC
+            --disable DEFAULT_CUBIC \
+            --disable APUSYS \
+            --disable MTK_APUSYS \
+            --disable APU_POWER
 
           $CFG --file "$DEF" \
             --enable TMPFS_XATTR \
@@ -288,12 +291,26 @@ jobs:
             echo "blocktag-index.c patched (proc_compat_ioctl)"
           fi
 
+          # Fix duplicate devfreq_update_stats trong apu-driver.c
+          if [ -f drivers/misc/mediatek/apusys/power/2.5/common/apu-driver.c ]; then
+            sed -i 's|#include.*devfreq/governor\.h.*|// & // patched: duplicate devfreq_update_stats|' \
+              drivers/misc/mediatek/apusys/power/2.5/common/apu-driver.c
+            echo "apu-driver.c patched (comment governor.h include)"
+          fi
+
+          # Fix zero-length format string trong sec_input.c (nếu có)
+          if [ -f drivers/input/sec_input/sec_input.c ]; then
+            sed -i 's/snprintf(\([^,]*\), [^,]*,\s*""\s*)/snprintf(\1, sizeof(\1), " ")/g' \
+              drivers/input/sec_input/sec_input.c
+            echo "sec_input.c patched (replace empty string with space)"
+          fi
+
           echo "=== Bắt đầu build kernel ==="
           make O=../out/target/product/a15/obj/KERNEL_OBJ \
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=stringop-overread -Wno-error=parentheses -Wno-error=unused-variable -Wno-error=unused-result -Wno-error=uninitialized -Wno-error=frame-larger-than=" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=stringop-overread -Wno-error=parentheses -Wno-error=unused-variable -Wno-error=unused-result -Wno-error=uninitialized -Wno-error=frame-larger-than= -Wno-error=format-zero-length" \
             -j$(nproc)
 
           ccache -s
@@ -385,14 +402,15 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.13
+            ## KernelSU-Next cho SM-A155F — Final v5.14
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Thay đổi trong v5.13:
-            - 🔧 Bỏ disable `DEVFREQ` (tránh lỗi `devfreq_update_stats` redefinition)
-            - 🚩 Thêm `-Wno-error=frame-larger-than=` để vượt qua lỗi stack frame trong `emi-mpu.c`
-            - ✅ Giữ nguyên các bản vá và KCFLAGS khác
+            ### Thay đổi trong v5.14:
+            - 🔧 Fix `devfreq_update_stats` redefinition bằng cách comment `#include <devfreq/governor.h>`
+            - 🚩 Thêm `-Wno-error=format-zero-length`
+            - ✅ Tắt toàn bộ driver `APUSYS`
+            - ✅ Kế thừa tất cả bản vá từ 27 lần chạy trước
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
