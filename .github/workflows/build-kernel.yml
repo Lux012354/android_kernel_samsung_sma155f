@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.11)
+name: Build KernelSU-Next (Final v5.13)
 
 on:
   workflow_dispatch:
@@ -225,11 +225,9 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             a15_00_defconfig
 
-          echo "=== Force disable MTK_BLOCKTAG và các config liên quan ==="
+          echo "=== Force disable MTK_BLOCKTAG ==="
           CONFIG_FILE="../out/target/product/a15/obj/KERNEL_OBJ/.config"
           scripts/config --file "$CONFIG_FILE" --disable MTK_BLOCKTAG
-          scripts/config --file "$CONFIG_FILE" --disable DEVFREQ_GOV_SIMPLE_ONDEMAND
-          scripts/config --file "$CONFIG_FILE" --disable DEVFREQ
 
           echo "=== Đồng bộ lại .config với olddefconfig ==="
           make O=../out/target/product/a15/obj/KERNEL_OBJ \
@@ -295,7 +293,7 @@ jobs:
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=stringop-overread -Wno-error=parentheses -Wno-error=unused-variable -Wno-error=unused-result -Wno-error=uninitialized" \
+            KCFLAGS="-Wno-error=format= -Wno-error=format-extra-args -Wno-error=implicit-function-declaration -Wno-error=unused-function -Wno-error=misleading-indentation -Wno-error=unused-label -Wno-implicit-fallthrough -Wno-strict-prototypes -Wno-error=stringop-overread -Wno-error=parentheses -Wno-error=unused-variable -Wno-error=unused-result -Wno-error=uninitialized -Wno-error=frame-larger-than=" \
             -j$(nproc)
 
           ccache -s
@@ -387,14 +385,14 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.11
+            ## KernelSU-Next cho SM-A155F — Final v5.13
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Thay đổi trong v5.11:
-            - 🔧 Thêm `-Wno-error=unused-variable`, `-Wno-error=unused-result`, `-Wno-error=uninitialized`
-            - ✅ Blocktag đã bị chặn hoàn toàn từ v5.10
-            - ✅ Kế thừa tất cả bản vá và kiểm tra từ các phiên bản trước
+            ### Thay đổi trong v5.13:
+            - 🔧 Bỏ disable `DEVFREQ` (tránh lỗi `devfreq_update_stats` redefinition)
+            - 🚩 Thêm `-Wno-error=frame-larger-than=` để vượt qua lỗi stack frame trong `emi-mpu.c`
+            - ✅ Giữ nguyên các bản vá và KCFLAGS khác
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
