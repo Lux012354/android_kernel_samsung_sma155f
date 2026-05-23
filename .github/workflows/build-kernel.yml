@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.9)
+name: Build KernelSU-Next (Final v5.10)
 
 on:
   workflow_dispatch:
@@ -272,11 +272,17 @@ jobs:
           grep -n "disp_arr.h" drivers/gpu/mediatek/ged/src/ged_kpi.c || \
             echo "ged_kpi.c patched OK"
 
-          # Xóa dòng obj-$(CONFIG_MTK_BLOCKTAG) khỏi Makefile
+          # Xóa dòng obj-$(CONFIG_MTK_BLOCKTAG) khỏi Makefile cha
           sed -i '/obj-\$(CONFIG_MTK_BLOCKTAG)/d' drivers/misc/mediatek/Makefile
           grep "MTK_BLOCKTAG" drivers/misc/mediatek/Makefile \
             && echo "ERROR: blocktag still in Makefile" && exit 1 \
-            || echo "blocktag Makefile patched OK"
+            || echo "blocktag Makefile line removed"
+
+          # Xóa sạch Makefile của thư mục blocktag để ngăn compile toàn bộ
+          if [ -f drivers/misc/mediatek/blocktag/Makefile ]; then
+            echo "# Patched: all blocktag objects removed" > drivers/misc/mediatek/blocktag/Makefile
+            echo "blocktag/Makefile cleared"
+          fi
 
           # Sửa lỗi proc_compat_ioctl (kernel 5.10 không có trong proc_ops)
           if [ -f drivers/misc/mediatek/blocktag/blocktag-index.c ]; then
@@ -381,14 +387,14 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.9
+            ## KernelSU-Next cho SM-A155F — Final v5.10
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Thay đổi trong v5.9:
-            - 🐛 Sửa regex `proc_compat_ioctl` (bỏ `^` để match được dòng có indent)
-            - 🧹 Loại bỏ bước comment Kconfig (không cần thiết, tránh lỗi)
-            - ✅ Giữ nguyên các bản vá và kiểm tra từ v5.8
+            ### Thay đổi trong v5.10:
+            - 🧹 Clear hoàn toàn Makefile của `blocktag/` để ngăn compile
+            - ✅ Blocktag không còn cách nào lọt vào build
+            - 🐛 Giữ lại bản vá proc_compat_ioctl (nếu có)
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
