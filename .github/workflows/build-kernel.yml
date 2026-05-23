@@ -1,4 +1,4 @@
-name: Build KernelSU-Next (Final v5.4)
+name: Build KernelSU-Next (Final v5.5)
 
 on:
   workflow_dispatch:
@@ -254,6 +254,11 @@ jobs:
           grep -n "disp_arr.h" drivers/gpu/mediatek/ged/src/ged_kpi.c || \
             echo "ged_kpi.c patched OK"
 
+          sed -i 's/^obj-\$(CONFIG_MTK_BLOCKTAG)/#obj-\$(CONFIG_MTK_BLOCKTAG)/' \
+            drivers/misc/mediatek/Makefile
+          grep "MTK_BLOCKTAG" drivers/misc/mediatek/Makefile || \
+            echo "blocktag Makefile patched OK"
+
           echo "=== Bắt đầu build kernel ==="
           make O=../out/target/product/a15/obj/KERNEL_OBJ \
             ARCH=arm64 \
@@ -351,14 +356,13 @@ jobs:
           tag_name: KSU-Next-CYG3-v${{ github.run_number }}-${{ github.run_attempt }}
           name: "KernelSU-Next A155F CYG3 — Build #${{ github.run_number }} (attempt ${{ github.run_attempt }})"
           body: |
-            ## KernelSU-Next cho SM-A155F — Final v5.4
+            ## KernelSU-Next cho SM-A155F — Final v5.5
 
             **Firmware gốc tương thích:** A155FXXS7CYG3
 
-            ### Thay đổi trong v5.4:
-            - 🔧 Thêm `-Wno-error=stringop-overread` và `-Wno-error=parentheses` vào KCFLAGS
-            - 🔧 Disable thêm driver `TZDEV` (không tương thích)
-            - ✅ Giữ toàn bộ các bản vá và cấu hình từ v5.3.3
+            ### Thay đổi trong v5.5:
+            - 🔧 Vô hiệu hóa triệt để driver `blocktag` bằng cách comment trong Makefile
+            - ✅ Kế thừa tất cả các bản vá và KCFLAGS từ v5.4
 
             ### Lưu ý trước khi flash:
             > ⚠️ Đảm bảo đã vô hiệu hóa `dm-verity` (flash `vbmeta` với `--disable-verity`)
